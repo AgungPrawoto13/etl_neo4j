@@ -1,0 +1,14 @@
+version: '3.8'
+services:
+  neo4j:
+    image: neo4j
+    container_name: neo4j
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      - NEO4J_dbms_connector_https_advertised__address=:7473
+      - NEO4J_dbms_connector_http_advertised__address=:7474
+      - NEO4J_dbms_connector_bolt_advertised__address=:7687
+      - NEO4J_AUTH=none
+    restart: unless-stopped
