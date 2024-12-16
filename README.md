@@ -1,7 +1,7 @@
 "# etl_neo4j" 
 
 ## Architecture
-![Architecture](flow neo4j.jpg)
+![Architecture](flow_neo4j.jpg)
 
 ## Find Relationship By Unique ID
 ![Find Relationship By Unique ID](find_relations_by_unique_id.PNG)
