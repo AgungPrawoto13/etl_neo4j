@@ -9,6 +9,8 @@ services:
     environment:
       - NEO4J_AUTH=none
       - NEO4JLABS_PLUGINS=["apoc"]
+      - NEO4J_apoc_export_file_enabled:True
+      - NEO4J_dbms_security_allow__csv__import__from__file__urls:True
       - NEO4J_dbms_security_procedures_unrestricted=apoc.*
       - NEO4J_dbms_security_procedures_allowlist=apoc.*
     volumes:
