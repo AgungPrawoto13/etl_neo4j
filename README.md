@@ -16,6 +16,7 @@ CALL apoc.path.subgraphAll(n, {
 })
 YIELD nodes, relationships
 RETURN nodes as path, relationships
+```
 
 ![Find Relationship By Unique ID](find_relations_by_unique_id.PNG)
 
