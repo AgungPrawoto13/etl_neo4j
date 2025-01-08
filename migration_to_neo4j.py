@@ -76,9 +76,11 @@ def create_relationships_batch(batch):
     query = """
     CALL apoc.periodic.iterate(
         'UNWIND $rows AS row RETURN row',
-        'MATCH (a:Node {unique_id: row.properties.event2_id}), (b:Node {unique_id: row.properties.event1_id})
-         CREATE (a)<-[r:LINKS_TO]-(b)
-         SET r += row.properties',
+        'MATCH (e1:Node {unique_id: row.properties.event1_id}),
+               (e2:Node {unique_id: row.properties.event2_id})
+         CREATE (e1)<-[b:BACKWARD]-(e2)
+         CREATE (e1)-[f:FORWARD]->(e2)
+         SET b += row.properties, f += row.properties ',
         {batchSize: 50000, parallel: true, params: {rows: $rows}}
     );
     """
@@ -128,9 +130,48 @@ def process_relationships_in_parallel(df, batch_size, max_workers=4):
     end_link = datetime.now(jakarta_tz) - start_link
     return end_link
 
-file = 'testing_file'
-df_links = pd.read_parquet(f'{file}/links_bc 1.parquet')[['event1_id','event2_id']]
-df_events = pd.read_parquet(f'{file}/events_bc 2.parquet')[['unique_id']]
+def read_file():
+    print("Read file")
+    file = 'testing_file'
+    query = ""
+    df_links = pd.read_parquet(f'{file}/links_bc.parquet')[['event1_id','event2_id']].drop_duplicates()
+    df_events = pd.read_parquet(f'{file}/events_bc.parquet')[['unique_id']]
+    df_backward = pd.read_parquet(f'{file}/20241114-backward.parquet')
+
+    backward = df_backward[df_backward['bl_number'] == "GAVMNOVE0810245"]
+    event_list = backward['event2_id'].to_list() + backward['event1_id'].to_list()
+
+    df_new_link = df_links[
+        (df_links['event1_id'].isin(backward['event1_id'])) &
+        (df_links['event2_id'].isin(backward['event2_id']))]
+    
+    df_new_event = df_events[df_events['unique_id'].isin(event_list)]
+
+    print("Success read file")
+    return df_new_event, df_new_link
+
+#get data neo4j
+def run_query(tx): 
+    query = """
+    MATCH path1=(n:Node {unique_id: "TRANS_SODOGIDS_R_202410100000147841"})-[:BACKWARD*0..200]->(m1)
+    RETURN path1 AS path
+    """
+    result = tx.run(query)
+    return [record["path"] for record in result]
+
+def convert_to_dataframe(paths):
+    data = []
+    for path in tqdm(paths, desc="Process convert dataframe"):
+        if path:
+            nodes = path.nodes
+            relationships = path.relationships
+            for i in range(len(relationships)):
+                source = nodes[i]["unique_id"]
+                target = nodes[i+1]["unique_id"]
+                rel_type = relationships[i].type
+                data.append({"source": source, "relation": rel_type, "target": target})
+    
+    return pd.DataFrame(data)
 
 # Inisialisasi koneksi ke Neo4j
 neo4j_config = {
@@ -139,13 +180,29 @@ neo4j_config = {
     'password': "yourpassword"
 }
 
+df_events, df_links = read_file()
+
 neo4j_handler = Neo4jHandler(neo4j_config["uri"], neo4j_config["user"], neo4j_config["password"])
 # Proses parallel
 exc_time_node = process_nodes_in_parallel(df_events, batch_size=50000, max_workers=4)
 exc_time_relation = process_relationships_in_parallel(df_links, batch_size=50000, max_workers=4)
 
-# Tutup koneksi
-neo4j_handler.close()
+try:
+    with neo4j_handler.driver.session() as session:
+        print("cek session", session)
+        result = session.execute_write(run_query)
+        df = convert_to_dataframe(result)
+        df = df.drop_duplicates()
+
+    df.to_csv("Hasil backward.csv")
+
+except Exception as e:
+    print("Error when convert to df", e)
+
+finally:
+    # Tutup koneksi
+    neo4j_handler.close()
+    
 end_script = datetime.now(jakarta_tz) - start_script
 print("Estimasi script selesai", end_script)
 print("Estimasi node selesai", exc_time_node)
